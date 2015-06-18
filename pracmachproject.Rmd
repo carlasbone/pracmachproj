@@ -1,0 +1,99 @@
+---
+title: "Practical Machine Learning Project"
+author: "Carla Bone"
+date: "Friday, June 19, 2015"
+output: html_document
+---
+The Project background and Requirements
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants, and try to predict whether they did the required exercise correctly or not, and so in which group they would be, based on the predictor variables. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.  So the groups to be predicted are group A, they did the exercise correctly, and groups B to E, in which they were asked to preform the exerise incorrectly in a consistent and supervised manner.
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+Load required packages
+
+```{r, results='hide',message=FALSE, warning=FALSE}
+#import data
+library(dplyr)
+library(randomForest)
+library(caret)
+library(Hmisc)
+```
+
+Read the datasets in and split the training set into training and validation sets
+
+```{r}
+set.seed(23454) # For reproducibile purpose
+pml.training <- read.csv("pml-training.csv", stringsAsFactors=FALSE)
+pml.testing <- read.csv("pml-testing.csv", stringsAsFactors=FALSE)
+oftraining <- createDataPartition(pml.training$classe,p=0.60, list=FALSE)
+subtraining <- pml.training[oftraining,]
+valtraining <-  pml.training[-oftraining,]
+```
+
+When viewing the 20 testing rows of data, you can see that there are many fields for which there are only NA's.  Not very useful for predicting with, so they need to be removed, along with other "set" fields, ie fields that have been created by project makers, rather than measured.
+
+```{r}
+#using subset get rid of unnecessary fields
+subpmlnames <- names(subtraining)
+subnameIndex <- grep("X|user_name|^raw_|cvtd_|new_|num_|^var_|^avg_|^amplitude_|^kurtosis_|^skewness_|^stddev_|^min_|^max_|^max)",subpmlnames)
+subcalcfields <-  select(subtraining,-subnameIndex)
+subcalcfields$classe <- as.factor(subcalcfields$classe)
+submyvars <- subcalcfields
+##=====================================================
+# process validation set
+valpmlnames <- names(valtraining)
+valnameIndex <- grep("X|user_name|^raw_|cvtd_|new_|num_|^var_|^avg_|^amplitude_|^kurtosis_|^skewness_|^stddev_|^min_|^max_|^max)",valpmlnames)
+valcalcfields <-  select(valtraining,-valnameIndex)
+valcalcfields$classe <- as.factor(valcalcfields$classe)
+##=====================================================
+#process testing
+testnames <- names(pml.testing)
+testIndex <- grep("^X|user_name|raw_|cvtd_|new_|num_|var_|avg_|amplitude_|kurtosis_|skewness_|stddev_|min_|max_|problem_)",testnames)
+testfields <- select(pml.testing,-testIndex)
+
+```
+
+
+The prediction model is made on the standalone random forest algorithm, as I tried the rpart algorithm, but the best accuracy I could get was 34%.  Then I tried the random forest method within the Caret package using the train method, but my computer couldn't deal with computations, so after reading various articles on the internet, I kept ending up with articles based on the standalone method of random forest, which after trying, worked first time.
+
+```{r}
+fit <- randomForest(classe ~ ., data=submyvars)
+print(fit) # view results
+```
+
+The OOB, out of bag estimate of error rate is 0.67%, which for random forest is the same as if estimating using a cross validation method.
+
+```{r}
+predictval <- predict(fit, valcalcfields)
+results <- confusionMatrix(valcalcfields$classe, predictval)
+as.matrix(results, what = "overall")
+accuracy <- as.matrix(results, what = "overall")[1,]
+
+```
+
+The accuracy for this prediction is 99.37%
+
+```{r}
+as.matrix(results, what = "classes")
+error <- round((1 - as.numeric(accuracy)) *100,2)
+error[1]
+```
+
+The out of sample error for prediction is .62% taken from 1 - (sensitivity for group A)
+
+
+
+
+Code for submitting test prediction results.  These results were all accepted.
+
+```{r}
+pred3 <-predict(fit,testfields)
+answers <- as.character(pred3)
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+```
